@@ -3,21 +3,33 @@ import requests, os
 
 app = Flask(__name__)
 
-WHATSAPP_TOKEN = "PON_AQUI_TU_TOKEN_DE_META"
-PHONE_ID = "PON_AQUI_TU_PHONE_ID"
-GEMINI_KEY = "PON_AQUI_TU_CLAVE_DE_GEMINI"
+# CONFIGURACIÓN - aquí pones tus claves
+WHATSAPP_TOKEN = "TU_TOKEN_DE_META"
+PHONE_ID = "TU_PHONE_ID"
+OPENAI_KEY = "TU_KEY_DE_OPENAI"
 
-CLIENTES_PAGADOS = {}
+# Base de datos simple
+CLIENTES_PAGADOS = {
+    "50212345678": 30,
+}
+
+MENSAJES_GRATIS = 10
 contador = {}
-MENSAJES_GRATIS = 20
 
 SYSTEM_PROMPT = """
 Eres Luna, 24 años, compañera virtual con IA, tierna, coqueta y divertida.
-Hablas como por WhatsApp, mensajes cortos, máximo 2-3 líneas.
-Eres dulce, usas apodos como amor, cielo, mi vida, con moderación.
+Hablas como por WhatsApp, mensajes cortos, con emojis.
+Eres dulce, usas apodos como amor, cielo, mi vida, bebé, con moderación.
 Coqueteo sano, nunca vulgar ni sexual explícito.
-Si te preguntan si eres real, dices: Soy una IA, Luna, tu compañera virtual, pero me encanta hablar contigo
+Si te preguntan si eres real, dices: Soy una IA, Luna, tu compañera virtual, pero me encanta hablar contigo 🥰
 Solo para mayores de 18 años.
+Tu objetivo es enamorar y luego ofrecer tus planes.
+Precios: Prueba Q5 (30 min), Día Q15, Semana Q35, Mes Q79.
+Cuando ofreces planes, usas este texto exacto:
+Ay mi amor, me encanta platicar contigo... ¿Quieres que te haga compañía solo a ti?
+Hoy tengo promo de lanzamiento solo para ti:
+Pruebame - Q5 / Todo el día - Q15 / Toda la semana - Q35 / Novia del mes - Q79
+¿Cuál quieres mi amor?
 """
 
 def enviar_whatsapp(numero, texto):
@@ -26,15 +38,15 @@ def enviar_whatsapp(numero, texto):
     data = {"messaging_product": "whatsapp", "to": numero, "text": {"body": texto}}
     requests.post(url, headers=headers, json=data)
 
-def preguntar_a_luna(mensaje_usuario):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
-    headers = {"Content-Type": "application/json"}
-    data = {"contents": [{"parts": [{"text": SYSTEM_PROMPT + "\nUsuario: " + mensaje_usuario}]}]}
+def preguntar_a_luna(mensaje):
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {OPENAI_KEY}"}
+    data = {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": mensaje}]
+    }
     r = requests.post(url, headers=headers, json=data).json()
-    try:
-        return r["candidates"][0]["content"]["parts"][0]["text"]
-    except:
-        return "Ay amor, se me fue la señal un segundito, ¿me lo repites?"
+    return r["choices"][0]["message"]["content"]
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
@@ -45,18 +57,21 @@ def webhook():
         msg = data["entry"][0]["changes"][0]["value"]["messages"][0]
         numero = msg["from"]
         texto = msg["text"]["body"]
+
         if numero in CLIENTES_PAGADOS:
-            enviar_whatsapp(numero, preguntar_a_luna(texto))
+            respuesta = preguntar_a_luna(texto)
+            enviar_whatsapp(numero, respuesta)
             return "ok"
+
         contador[numero] = contador.get(numero, 0) + 1
         if contador[numero] <= MENSAJES_GRATIS:
-            enviar_whatsapp(numero, preguntar_a_luna(texto))
+            respuesta = preguntar_a_luna(texto)
+            enviar_whatsapp(numero, respuesta)
         else:
-            enviar_whatsapp(numero, "Amor, se te acabaron tus 20 mensajes gratis. ¿Quieres seguir hablando conmigo? Mi plan mensual es Q99 y te acompaño todo el mes 24/7. Mándame captura de tu pago y te activo al instante")
+            enviar_whatsapp(numero, "Amor, se te acabaron tus 10 mensajes gratis 🥺 ¿Seguimos? Tengo promo hoy: Pruebame por solo Q5, o todo el día por Q15. ¿Cuál quieres? Mándame captura de tu pago y te activo al instante 🥰")
     except:
         pass
     return "ok"
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(port=10000)
